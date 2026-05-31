@@ -1,3 +1,74 @@
-fn main() {
-    println!("Hello, world!");
+mod location;
+
+use std::{path::{Path, PathBuf}, vec};
+
+use image::{ImageBuffer, ImageFormat, Rgb};
+use image_merger::{FromWithFormat, Image, KnownSizeMerger, Merger};
+
+use futures::future::join_all;
+
+use clap::Parser;
+
+/// Downloads a composite image of lake depth data from the Minnesota Department of Natural Resources
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// Latitude of image center
+    latitude: f64,
+
+    /// Longitude of image center
+    longitude: f64,
+
+    /// Output File Path
+    out: PathBuf,
+
+    /// Radius (in photo blocks) around center to capture
+    #[arg(default_value_t = 5)]
+    radius: u8,
+
+    // Layer to capture. Must be in [1,16] inclusive
+    #[arg(default_value_t = 16)]
+    layer: u8,
+}
+
+#[tokio::main]
+async fn main() {
+    let args = Args::parse();
+    println!("Running with agrs: {:#?}", args);
+    let center = location::Location::from_gps(args.longitude, args.latitude, args.layer);
+    let radius = args.radius as u16;
+    let top_l = location::Location::new(center.x - radius, center.y - radius, args.layer);
+
+    let view = location::MapRectView::new(top_l, (radius * 2) + 1, (radius * 2) + 1);
+
+    println!("Downloading!");
+
+    let futures = view.map(async |f| {
+        let img_dat = f.get_async().await.expect("Could not download image!");
+        let img: Image<Rgb<u8>, ImageBuffer<Rgb<u8>, Vec<u8>>> =
+            Image::from_with_format(img_dat, ImageFormat::Png);
+        img
+    });
+    let images = futures::future::join_all(futures).await;
+
+    println!("Merging!");
+
+    let mut merger = KnownSizeMerger::new(
+        (
+            images[0].dimensions().0,// * view.width() as u32,
+            images[0].dimensions().1// * view.height() as u32,
+        ),
+        view.width() as u32,
+        view.num_imgs() as u32,
+        None,
+    );
+
+    for image in &images {
+        merger.push(image);
+    }
+
+    println!("Saving!");
+
+    let canvas = merger.get_canvas();
+    canvas.save_with_format(args.out, ImageFormat::Bmp).unwrap();
 }
