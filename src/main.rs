@@ -1,11 +1,9 @@
 mod location;
 
-use std::{path::{Path, PathBuf}, vec};
+use std::path::PathBuf;
 
 use image::{ImageBuffer, ImageFormat, Rgb};
 use image_merger::{FromWithFormat, Image, KnownSizeMerger, Merger};
-
-use futures::future::join_all;
 
 use clap::Parser;
 
@@ -55,8 +53,8 @@ async fn main() {
 
     let mut merger = KnownSizeMerger::new(
         (
-            images[0].dimensions().0,// * view.width() as u32,
-            images[0].dimensions().1// * view.height() as u32,
+            images[0].dimensions().0, // * view.width() as u32,
+            images[0].dimensions().1, // * view.height() as u32,
         ),
         view.width() as u32,
         view.num_imgs() as u32,

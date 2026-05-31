@@ -92,7 +92,7 @@ impl MapRectView {
         self.height
     }
 
-    pub fn num_imgs(&self) -> u32{
+    pub fn num_imgs(&self) -> u32 {
         self.height() as u32 * self.width() as u32
     }
 }
@@ -117,7 +117,6 @@ impl Iterator for MapRectView {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,5 +128,20 @@ mod tests {
         let l = Location::from_gps(long, lat, 16);
         assert_eq!(l.x, 15746);
         assert_eq!(l.y, 23542);
+    }
+    
+    #[test]
+    fn test_map_view_count() {
+        let view = MapRectView {
+            top_l: Location {
+                x: 0,
+                y: 0,
+                layer: 16,
+            },
+            width: 5,
+            height: 5,
+            idx: 0,
+        };
+        assert_eq!(view.count(), view.num_imgs() as usize);
     }
 }
