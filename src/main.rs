@@ -25,8 +25,8 @@ struct Args {
     /// Longitude of image center
     longitude: f64,
 
-    /// Output File Path. Note, no matter the file type it will be written as a bmp
-    #[arg(short, long, default_value_t = String::from_str("out.bmp").expect("Big OOps"))]
+    /// Output File Path. Note, no matter the file type it will be written as a png
+    #[arg(short, long, default_value_t = String::from_str("out.png").expect("Big OOps"))]
     out: String,
 
     /// Radius (in photo blocks) around center to capture
@@ -121,5 +121,5 @@ async fn main() {
 
     println!("Saving!");
 
-    img.save_with_format(args.out, ImageFormat::Bmp).unwrap();
+    img.save_with_format(args.out, ImageFormat::Png).unwrap();
 }
