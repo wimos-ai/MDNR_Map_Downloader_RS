@@ -1,10 +1,28 @@
-use std::hash::Hash;
+use std::{error::Error, hash::Hash, result};
 
 #[derive(Default, Hash, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Location {
     pub x: u16,
     pub y: u16,
     pub layer: u8,
+}
+
+#[derive(Debug)]
+pub enum LocationError {
+    ReqwestErr(reqwest::Error),
+    ResponceCode(u16),
+}
+
+impl From<u16> for LocationError {
+    fn from(value: u16) -> Self {
+        LocationError::ResponceCode(value)
+    }
+}
+
+impl From<reqwest::Error> for LocationError {
+    fn from(value: reqwest::Error) -> Self {
+        LocationError::ReqwestErr(value)
+    }
 }
 
 impl Location {
@@ -51,17 +69,32 @@ impl Location {
         )
     }
 
-    pub fn get_blocking(&self) -> Result<Vec<u8>, reqwest::Error> {
+    pub fn get_blocking(&self) -> Result<Vec<u8>, LocationError> {
         let url = self.get_url();
         let resp = reqwest::blocking::get(url)?;
-        let bytes = resp.bytes()?;
-        Ok(bytes.to_vec())
+        match resp.status().as_u16() {
+            200 => Ok(resp.bytes()?.to_vec()),
+            value => Err(value.into()),
+        }
     }
 
-    pub async fn get_async(self) -> Result<Vec<u8>, reqwest::Error> {
+    pub async fn get_async(self) -> Result<Vec<u8>, LocationError> {
         let url = self.get_url();
-        let resp = reqwest::get(url).await?.bytes().await?;
-        Ok(resp.to_vec())
+        let resp = reqwest::get(url).await?;
+        match resp.status().as_u16() {
+            200 => Ok(resp.bytes().await?.to_vec()),
+            value => Err(value.into()),
+        }
+    }
+}
+
+impl std::fmt::Display for Location {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Location[x:{}, y:{}, layer: {}]",
+            self.x, self.y, self.layer
+        )
     }
 }
 
