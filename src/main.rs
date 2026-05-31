@@ -7,7 +7,7 @@ use image_merger::{FromWithFormat, Image, KnownSizeMerger, Merger};
 
 use clap::Parser;
 
-/// Downloads a composite image of lake depth data from the Minnesota Department of Natural Resources
+/// Downloads a composite image of lake depth data from the Minnesota Department of Natural Resources as a bmp
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
@@ -17,7 +17,7 @@ struct Args {
     /// Longitude of image center
     longitude: f64,
 
-    /// Output File Path
+    /// Output File Path. Note, no matter the file type it will be written as a bmp
     #[arg(short, long, default_value_t = String::from_str("out.bmp").expect("Big OOps"))]
     out: String,
 
