@@ -129,7 +129,7 @@ mod tests {
         assert_eq!(l.x, 15746);
         assert_eq!(l.y, 23542);
     }
-    
+
     #[test]
     fn test_map_view_count() {
         let view = MapRectView {

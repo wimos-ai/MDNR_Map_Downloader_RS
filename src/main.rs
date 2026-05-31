@@ -1,6 +1,6 @@
 mod location;
 
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 
 use image::{ImageBuffer, ImageFormat, Rgb};
 use image_merger::{FromWithFormat, Image, KnownSizeMerger, Merger};
@@ -18,21 +18,21 @@ struct Args {
     longitude: f64,
 
     /// Output File Path
-    out: PathBuf,
+    #[arg(short, long, default_value_t = String::from_str("out.bmp").expect("Big OOps"))]
+    out: String,
 
     /// Radius (in photo blocks) around center to capture
-    #[arg(default_value_t = 5)]
+    #[arg(short, long, default_value_t = 5)]
     radius: u8,
 
     // Layer to capture. Must be in [1,16] inclusive
-    #[arg(default_value_t = 16)]
+    #[arg(short, long, default_value_t = 16)]
     layer: u8,
 }
 
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
-    println!("Running with agrs: {:#?}", args);
     let center = location::Location::from_gps(args.longitude, args.latitude, args.layer);
     let radius = args.radius as u16;
     let top_l = location::Location::new(center.x - radius, center.y - radius, args.layer);
@@ -52,10 +52,7 @@ async fn main() {
     println!("Merging!");
 
     let mut merger = KnownSizeMerger::new(
-        (
-            images[0].dimensions().0, // * view.width() as u32,
-            images[0].dimensions().1, // * view.height() as u32,
-        ),
+        (images[0].dimensions().0, images[0].dimensions().1),
         view.width() as u32,
         view.num_imgs() as u32,
         None,
