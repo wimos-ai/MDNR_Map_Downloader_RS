@@ -33,7 +33,7 @@ impl Location {
 
     pub fn translate_layer(&self, layer: u8) -> Location {
         assert!(layer <= 16 && layer != 0);
-        let mut new = self.clone();
+        let mut new = *self;
         if new.layer < layer {
             while new.layer != layer {
                 new.x *= 2;
@@ -55,11 +55,11 @@ impl Location {
         let x = ((182.038 * longitude) + 32766.9) as u16;
         let y = ((-259.216 * latitude) + 35235.3) as u16;
         let l = Location {
-            x: x,
-            y: y,
+            x,
+            y,
             layer: 16,
         };
-        return l.translate_layer(layer);
+        l.translate_layer(layer)
     }
 
     pub fn get_url(&self) -> String {
@@ -67,15 +67,6 @@ impl Location {
             "https://tiles.dnr.state.mn.us/mapcache/gmaps/compass@mn_google/{}/{}/{}.png",
             self.layer, self.x, self.y
         )
-    }
-
-    pub fn get_blocking(&self) -> Result<Vec<u8>, LocationError> {
-        let url = self.get_url();
-        let resp = reqwest::blocking::get(url)?;
-        match resp.status().as_u16() {
-            200 => Ok(resp.bytes()?.to_vec()),
-            value => Err(value.into()),
-        }
     }
 
     pub async fn get_async(self) -> Result<Vec<u8>, LocationError> {

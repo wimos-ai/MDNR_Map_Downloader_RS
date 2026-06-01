@@ -85,7 +85,7 @@ async fn image_from_view(view: location::MapRectView, nconcurrent: usize) -> Ima
         let mut merger = KnownSizeMerger::new(
             (images[0].dimensions().0, images[0].dimensions().1),
             view.width() as u32,
-            view.num_imgs() as u32,
+            view.num_imgs(),
             None,
         );
 
@@ -112,11 +112,11 @@ async fn main() {
 
     println!("Downloading!");
 
-    let mut img = image_from_view(view, args.nreqs).await;
+    let img = image_from_view(view, args.nreqs).await;
 
     if args.threshold_boarders {
         println!("Thresholding");
-        let img = img_ops::threshold_image_luma(&mut img);
+        let img = img_ops::threshold_image_luma(&img);
 
         if args.seperate_layers {
             println!("Seperating!");
