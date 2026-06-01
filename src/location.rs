@@ -51,11 +51,10 @@ fn get_retry_delay(response: &reqwest::Response) -> Option<Duration> {
     }
 
     // 3. Alternatively, parse as an HTTP-Date timestamp
-    if let Ok(date) = httpdate::parse_http_date(header_str) {
-        if let Ok(duration) = date.duration_since(std::time::SystemTime::now()) {
+    if let Ok(date) = httpdate::parse_http_date(header_str)
+        && let Ok(duration) = date.duration_since(std::time::SystemTime::now()) {
             return Some(duration);
         }
-    }
 
     None
 }
@@ -112,15 +111,6 @@ impl Location {
                     Err(LocationError::ResponseCode(value))
                 }
             }
-        }
-    }
-
-    pub async fn get_async(&self) -> Result<Vec<u8>, LocationError> {
-        let url = self.get_url();
-        let resp = reqwest::get(url).await?;
-        match resp.status().as_u16() {
-            200 => Ok(resp.bytes().await?.to_vec()),
-            value => Err(value.into()),
         }
     }
 }
