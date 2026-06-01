@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4.6.1", features = ["derive"] }
+crc = "3.4.0"
 futures = "0.3.32"
 httpdate = "1.0.3"
 image = "0.25.10"

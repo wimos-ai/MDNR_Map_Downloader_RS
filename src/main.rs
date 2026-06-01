@@ -2,6 +2,7 @@ mod img_ops;
 mod location;
 
 use core::time;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -12,7 +13,7 @@ use image::{ImageBuffer, ImageFormat, Rgb};
 use image_merger::{FromWithFormat, Image, KnownSizeMerger, Merger};
 
 use clap::Parser;
-use tokio::sync::Semaphore;
+use tokio::sync::{Mutex, Semaphore};
 
 use crate::img_ops::{save_images, separate_image};
 use crate::location::LocationError;
@@ -60,22 +61,23 @@ async fn image_from_view(
 ) -> Result<ImageRGB8, LocationError> {
     let sem = Arc::new(Semaphore::new(nconcurrent)); // Limit to 400 concurrent tasks
     let client = reqwest::Client::new();
+    let cache = Arc::new(Mutex::new(HashMap::new()));
 
     let futures = view.map(async |f| -> Result<_, LocationError> {
-        let _ = sem.clone().acquire_owned().await.unwrap();
+        let permit = sem.clone().acquire_owned().await.unwrap();
         let nattempts = 10;
         let mut attempts = 0;
-        loop {
+        let data = loop {
             let data = f.get_async_c(&client).await;
 
             match data {
-                Ok(data) => return Ok(data),
+                Ok(data) => break Ok(data),
                 Err(err) => {
                     if attempts < nattempts {
                         attempts += 1;
                         let sleep_t = match err {
                             LocationError::RetryAfter(duration) => duration,
-                            LocationError::ResponseCode(400..500) => return Err(err),
+                            LocationError::ResponseCode(400..500) => break Err(err),
                             _ => time::Duration::from_secs(attempts),
                         };
                         let sleep_ms = sleep_t.as_millis() as f64;
@@ -86,13 +88,37 @@ async fn image_from_view(
                         sleep(Duration::from_millis(sleep_f as u64)).await;
                         continue;
                     }
-                    return Err(err);
+                    break Err(err);
                 }
             }
-        }
+        }?;
+
+        drop(permit);
+        // Implement something similar to String Interning. Arc<[u8]>?
+
+        let hash = {
+            const CUSTOM_ALG: crc::Algorithm<u128> = crc::Algorithm {
+                width: 128,
+                poly: 0x8005,
+                init: 0xffff,
+                refin: false,
+                refout: false,
+                xorout: 0x0000,
+                check: 0xaee7,
+                residue: 0x0000,
+            };
+
+            let crc = crc::Crc::<u128>::new(&CUSTOM_ALG);
+            let mut digest = crc.digest();
+            digest.update(&data);
+            digest.finalize()
+        };
+
+        let mut cache_handle = cache.lock().await;
+        Ok(cache_handle.entry(hash).or_insert_with(|| Arc::<[u8]>::from(data)).to_owned())
     });
     // These do need to be ordered
-    let datas: Result<Vec<_>, _> = futures::future::join_all(futures)
+    let datas: Result<Box<_>, _> = futures::future::join_all(futures)
         .await
         .into_iter()
         .collect();
