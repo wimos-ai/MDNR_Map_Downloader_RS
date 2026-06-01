@@ -2,10 +2,10 @@ mod img_ops;
 mod location;
 
 use core::time;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::thread::sleep;
-use std::{path::PathBuf, process::exit};
+use tokio::time::sleep;
 
 use image::{ImageBuffer, ImageFormat, Rgb};
 use image_merger::{FromWithFormat, Image, KnownSizeMerger, Merger};
@@ -66,15 +66,20 @@ async fn image_from_view(
         let mut attempts = 0;
         loop {
             let data = f.get_async_c(&client).await;
-            if data.is_ok() {
-                return Ok(data.unwrap());
-            } else {
-                if attempts == nattempts {
-                    return data;
-                } else {
-                    attempts += 1;
-                    sleep(time::Duration::from_secs(1));
-                    continue;
+
+            match data {
+                Ok(data) => return Ok(data),
+                Err(err) => {
+                    if attempts < nattempts {
+                        let sleep_t = match err {
+                            LocationError::RetryAfter(duration) => duration,
+                            _ => time::Duration::from_millis(rand::random_range(500..5000)),
+                        };
+                        sleep(sleep_t).await;
+                        attempts += 1;
+                        continue;
+                    }
+                    return Err(err);
                 }
             }
         }
@@ -84,22 +89,18 @@ async fn image_from_view(
         .await
         .into_iter()
         .collect();
-    let images: Vec<_> = datas?
-        .into_iter()
-        .map(|f| ImageRGB8::from_with_format(f, ImageFormat::Png))
-        .collect();
+    let datas = datas?;
+
     println!("Merging!");
 
     let merger = {
-        let mut merger = KnownSizeMerger::new(
-            (images[0].dimensions().0, images[0].dimensions().1),
-            view.width() as u32,
-            view.num_imgs(),
-            None,
-        );
+        let mut merger =
+            KnownSizeMerger::new((256, 256), view.width() as u32, view.num_imgs(), None);
 
-        for image in images {
-            let image = image;
+        for image in datas
+            .into_iter()
+            .map(|f| ImageRGB8::from_with_format(f, ImageFormat::Png))
+        {
             merger.push(&image);
         }
         merger

@@ -1,4 +1,6 @@
-use std::{error::Error, hash::Hash};
+use std::{error::Error, hash::Hash, time::Duration};
+
+use reqwest::header::RETRY_AFTER;
 
 #[derive(Default, Hash, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Location {
@@ -11,6 +13,7 @@ pub struct Location {
 pub enum LocationError {
     ReqwestErr(reqwest::Error),
     ResponseCode(u16),
+    RetryAfter(Duration),
 }
 
 impl From<u16> for LocationError {
@@ -30,11 +33,32 @@ impl std::fmt::Display for LocationError {
         match self {
             LocationError::ReqwestErr(error) => write!(f, "Reqwest Error: {}", error),
             LocationError::ResponseCode(code) => write!(f, "Invalid Error Code: {}", code),
+            LocationError::RetryAfter(duration) => write!(f, "Retry after {:?}", duration),
         }
     }
 }
 
-impl Error for LocationError{}
+impl Error for LocationError {}
+
+fn get_retry_delay(response: &reqwest::Response) -> Option<Duration> {
+    // 1. Fetch the Retry-After header from the response
+    let header_value = response.headers().get(RETRY_AFTER)?;
+    let header_str = header_value.to_str().ok()?;
+
+    // 2. Try parsing as a raw number of seconds
+    if let Ok(seconds) = header_str.parse::<u64>() {
+        return Some(Duration::from_secs(seconds));
+    }
+
+    // 3. Alternatively, parse as an HTTP-Date timestamp
+    if let Ok(date) = httpdate::parse_http_date(header_str) {
+        if let Ok(duration) = date.duration_since(std::time::SystemTime::now()) {
+            return Some(duration);
+        }
+    }
+
+    None
+}
 
 impl Location {
     pub fn new(x: u16, y: u16, layer: u8) -> Location {
@@ -81,7 +105,13 @@ impl Location {
         let resp = client.get(url).send().await?;
         match resp.status().as_u16() {
             200 => Ok(resp.bytes().await?.to_vec()),
-            value => Err(value.into()),
+            value => {
+                if let Some(delay) = get_retry_delay(&resp) {
+                    Err(LocationError::RetryAfter(delay))
+                } else {
+                    Err(LocationError::ResponseCode(value))
+                }
+            }
         }
     }
 
