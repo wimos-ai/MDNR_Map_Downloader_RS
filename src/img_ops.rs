@@ -37,7 +37,7 @@ pub fn threshold_image_luma(image: &ImageRGB8) -> ImageBW {
 
 fn log_pixel(image: &ImageBW, write_img: &mut ImageBW, visited: &mut ImageBW, x: u32, y: u32) {
     let mut stack = vec![(x, y)];
-    while let Some(idx) = stack.pop() {
+    while let Some((x, y)) = stack.pop() {
         visited.get_pixel_mut(x, y).0 = [1];
 
         let Some(pix) = image.get_pixel_checked(x, y) else {
@@ -62,8 +62,8 @@ fn log_pixel(image: &ImageBW, write_img: &mut ImageBW, visited: &mut ImageBW, x:
         ];
 
         for delta in DELTAS {
-            let x = idx.0 as i64 + delta.0;
-            let y = idx.1 as i64 + delta.1;
+            let x = x as i64 + delta.0;
+            let y = y as i64 + delta.1;
 
             let Ok(x) = u32::try_from(x) else {
                 continue; // Out of bounds
