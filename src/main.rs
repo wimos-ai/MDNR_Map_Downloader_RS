@@ -5,6 +5,7 @@ use core::time;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::time::sleep;
 
 use image::{ImageBuffer, ImageFormat, Rgb};
@@ -62,7 +63,7 @@ async fn image_from_view(
 
     let futures = view.map(async |f| -> Result<_, LocationError> {
         let _ = sem.clone().acquire_owned().await.unwrap();
-        let nattempts = 3;
+        let nattempts = 10;
         let mut attempts = 0;
         loop {
             let data = f.get_async_c(&client).await;
@@ -71,12 +72,18 @@ async fn image_from_view(
                 Ok(data) => return Ok(data),
                 Err(err) => {
                     if attempts < nattempts {
+                        attempts += 1;
                         let sleep_t = match err {
                             LocationError::RetryAfter(duration) => duration,
-                            _ => time::Duration::from_millis(rand::random_range(500..5000)),
+                            LocationError::ResponseCode(400..500) => return Err(err),
+                            _ => time::Duration::from_secs(attempts),
                         };
-                        sleep(sleep_t).await;
-                        attempts += 1;
+                        let sleep_ms = sleep_t.as_millis() as f64;
+                        let jitter_v = sleep_ms * 0.1;
+                        let jitter_t = rand::random_range(-jitter_v..jitter_v);
+                        let sleep_f = sleep_ms + jitter_t;
+
+                        sleep(Duration::from_millis(sleep_f as u64)).await;
                         continue;
                     }
                     return Err(err);
