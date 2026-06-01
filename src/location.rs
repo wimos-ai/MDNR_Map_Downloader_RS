@@ -1,4 +1,4 @@
-use std::hash::Hash;
+use std::{error::Error, hash::Hash};
 
 #[derive(Default, Hash, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Location {
@@ -24,6 +24,17 @@ impl From<reqwest::Error> for LocationError {
         LocationError::ReqwestErr(value)
     }
 }
+
+impl std::fmt::Display for LocationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LocationError::ReqwestErr(error) => write!(f, "Reqwest Error: {}", error),
+            LocationError::ResponseCode(code) => write!(f, "Invalid Error Code: {}", code),
+        }
+    }
+}
+
+impl Error for LocationError{}
 
 impl Location {
     pub fn new(x: u16, y: u16, layer: u8) -> Location {

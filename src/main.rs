@@ -1,8 +1,10 @@
 mod img_ops;
 mod location;
 
+use core::time;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::thread::sleep;
 use std::{path::PathBuf, process::exit};
 
 use image::{ImageBuffer, ImageFormat, Rgb};
@@ -12,6 +14,7 @@ use clap::Parser;
 use tokio::sync::Semaphore;
 
 use crate::img_ops::{save_images, separate_image};
+use crate::location::LocationError;
 
 type ImageRGB8 = Image<Rgb<u8>, ImageBuffer<Rgb<u8>, Vec<u8>>>;
 
@@ -50,36 +53,41 @@ struct Args {
     seperate_layers: bool,
 }
 
-async fn image_from_view(view: location::MapRectView, nconcurrent: usize) -> ImageRGB8 {
+async fn image_from_view(
+    view: location::MapRectView,
+    nconcurrent: usize,
+) -> Result<ImageRGB8, LocationError> {
     let sem = Arc::new(Semaphore::new(nconcurrent)); // Limit to 400 concurrent tasks
     let client = reqwest::Client::new();
 
-    let futures = view.map(async |f| {
-        let permit = sem.clone().acquire_owned().await.unwrap();
-        let img_dat = f.get_async_c(&client).await;
-        drop(permit);
-
-        match img_dat {
-            Ok(dat) => {
-                let img: Image<Rgb<u8>, ImageBuffer<Rgb<u8>, Vec<u8>>> =
-                    Image::from_with_format(dat, ImageFormat::Png);
-
-                img
+    let futures = view.map(async |f| -> Result<_, LocationError> {
+        let _ = sem.clone().acquire_owned().await.unwrap();
+        let nattempts = 3;
+        let mut attempts = 0;
+        loop {
+            let data = f.get_async_c(&client).await;
+            if data.is_ok() {
+                return Ok(data.unwrap());
+            } else {
+                if attempts == nattempts {
+                    return data;
+                } else {
+                    attempts += 1;
+                    sleep(time::Duration::from_secs(1));
+                    continue;
+                }
             }
-            Err(err) => match err {
-                location::LocationError::ReqwestErr(error) => {
-                    println!("Reqwest error: {:?}", error);
-                    exit(-1);
-                }
-                location::LocationError::ResponseCode(value) => {
-                    println!("Invalid Response Code: {}", value);
-                    exit(-1);
-                }
-            },
         }
     });
-    let images = futures::future::join_all(futures).await; // These do need to be ordered
-
+    // These do need to be ordered
+    let datas: Result<Vec<_>, _> = futures::future::join_all(futures)
+        .await
+        .into_iter()
+        .collect();
+    let images: Vec<_> = datas?
+        .into_iter()
+        .map(|f| ImageRGB8::from_with_format(f, ImageFormat::Png))
+        .collect();
     println!("Merging!");
 
     let merger = {
@@ -90,17 +98,18 @@ async fn image_from_view(view: location::MapRectView, nconcurrent: usize) -> Ima
             None,
         );
 
-        for image in &images {
-            merger.push(image);
+        for image in images {
+            let image = image;
+            merger.push(&image);
         }
         merger
     };
 
-    merger.into_canvas()
+    Ok(merger.into_canvas())
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), LocationError> {
     let args = Args::parse();
 
     println!("Running with: {:?}", args);
@@ -113,7 +122,7 @@ async fn main() {
 
     println!("Downloading!");
 
-    let img = image_from_view(view, args.nreqs).await;
+    let img = image_from_view(view, args.nreqs).await?;
 
     if args.threshold_boarders {
         println!("Thresholding");
@@ -138,4 +147,5 @@ async fn main() {
 
         img.save_with_format(args.out, ImageFormat::Png).unwrap();
     }
+    Ok(())
 }
