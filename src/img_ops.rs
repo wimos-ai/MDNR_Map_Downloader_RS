@@ -36,24 +36,13 @@ pub fn threshold_image_luma(image: &ImageRGB8) -> ImageBW {
 }
 
 fn log_pixel(image: &ImageBW, write_img: &mut ImageBW, visited: &mut ImageBW, x: u32, y: u32) {
-    let mut stack = vec![(x as i64, y as i64)];
+    let mut stack = vec![(x, y)];
     while let Some(idx) = stack.pop() {
-        let Ok(x) = u32::try_from(idx.0) else {
-            continue; // Out of bounds
-        };
-        let Ok(y) = u32::try_from(idx.1) else {
-            continue; // Out of bounds
-        };
+        visited.get_pixel_mut(x, y).0 = [1];
 
         let Some(pix) = image.get_pixel_checked(x, y) else {
             continue; // Out of bounds
         };
-
-        if visited.get_pixel(x, y).0 == [1] {
-            continue; // Already seen
-        }
-
-        visited.get_pixel_mut(x, y).0 = [1];
 
         if pix.0 == [255] {
             continue; // Pixel is white, don't propagate
@@ -61,7 +50,7 @@ fn log_pixel(image: &ImageBW, write_img: &mut ImageBW, visited: &mut ImageBW, x:
 
         write_img.get_pixel_mut(x, y).0 = [0]; // write the black pixel
 
-        let deltas = [
+        const DELTAS: [(i64, i64); 8] = [
             (-1, -1),
             (0, -1),
             (1, -1),
@@ -72,8 +61,26 @@ fn log_pixel(image: &ImageBW, write_img: &mut ImageBW, visited: &mut ImageBW, x:
             (1, 1),
         ];
 
-        for delta in deltas {
-            stack.push((idx.0 + delta.0, idx.1 + delta.1));
+        for delta in DELTAS {
+            let x = idx.0 as i64 + delta.0;
+            let y = idx.1 as i64 + delta.1;
+
+            let Ok(x) = u32::try_from(x) else {
+                continue; // Out of bounds
+            };
+            let Ok(y) = u32::try_from(y) else {
+                continue; // Out of bounds
+            };
+
+            let Some(_) = image.get_pixel_checked(x, y) else {
+                continue; // Out of bounds
+            };
+
+            if visited.get_pixel(x, y).0 == [1] {
+                continue; // Already seen
+            }
+
+            stack.push((x, y));
         }
     }
 }
@@ -93,7 +100,7 @@ pub fn seperate_image(image: &ImageBW) -> Vec<ImageBW> {
     images
 }
 
-pub fn save_images(images: &Vec<ImageBW>, out: &Path) -> Result<(), Box<dyn std::error::Error>> {
+pub fn save_images(images: &[ImageBW], out: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let file = if let Some(ext) = out.extension()
         && ext == "zip"
     {
