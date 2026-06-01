@@ -1,17 +1,17 @@
 mod img_ops;
 mod location;
 
-use std::io::Cursor;
-use std::panic;
-use std::process::exit;
+use std::str::FromStr;
 use std::sync::Arc;
-use std::{path::PathBuf, str::FromStr};
+use std::{path::PathBuf, process::exit};
 
-use image::{ImageBuffer, ImageFormat, ImageReader, Rgb};
+use image::{ImageBuffer, ImageFormat, Rgb};
 use image_merger::{FromWithFormat, Image, KnownSizeMerger, Merger};
 
 use clap::Parser;
 use tokio::sync::Semaphore;
+
+use crate::img_ops::{save_images, seperate_image};
 
 type ImageRGB8 = Image<Rgb<u8>, ImageBuffer<Rgb<u8>, Vec<u8>>>;
 
@@ -116,10 +116,25 @@ async fn main() {
 
     if args.threshold_boarders {
         println!("Thresholding");
-        img_ops::threshold_image(&mut img);
+        let img = img_ops::threshold_image_luma(&mut img);
+
+        if args.seperate_layers {
+            println!("Seperating!");
+
+            let imgs = seperate_image(&img);
+
+            println!("Saving!");
+
+            let path = PathBuf::from_str("out.zip").expect("OOPS");
+            let _ = save_images(&imgs, &path);
+        } else {
+            println!("Saving!");
+
+            img.save_with_format(args.out, ImageFormat::Png).unwrap();
+        }
+    } else {
+        println!("Saving!");
+
+        img.save_with_format(args.out, ImageFormat::Png).unwrap();
     }
-
-    println!("Saving!");
-
-    img.save_with_format(args.out, ImageFormat::Png).unwrap();
 }

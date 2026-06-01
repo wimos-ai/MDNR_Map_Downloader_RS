@@ -1,4 +1,4 @@
-use std::{error::Error, hash::Hash, result};
+use std::hash::Hash;
 
 #[derive(Default, Hash, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Location {
