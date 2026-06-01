@@ -15,7 +15,7 @@ use crate::img_ops::{save_images, seperate_image};
 
 type ImageRGB8 = Image<Rgb<u8>, ImageBuffer<Rgb<u8>, Vec<u8>>>;
 
-/// Downloads a composite image of lake depth data from the Minnesota Department of Natural Resources as a bmp
+/// Downloads a composite image of lake depth data from the Minnesota Department of Natural Resources
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
