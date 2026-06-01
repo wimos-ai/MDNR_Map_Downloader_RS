@@ -1,11 +1,11 @@
 use std::{
     fs::File,
     io::{Cursor, Write},
-    path::Path,
+    path::{Path, PathBuf},
+    str::FromStr,
 };
 
-use clap::builder::Resettable::Value;
-use image::{ImageBuffer, Luma, Rgb, flat::NormalForm::ImagePacked};
+use image::{ImageBuffer, Luma, Rgb};
 use image_merger::Image;
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
@@ -33,10 +33,6 @@ pub fn threshold_image_luma(image: &ImageRGB8) -> ImageBW {
         }
     }
     new_im
-}
-
-fn two_to_one(x: u32, y: u32, width: u32) -> usize {
-    ((y * width) + x) as usize
 }
 
 fn log_pixel(image: &ImageBW, write_img: &mut ImageBW, visited: &mut ImageBW, x: u32, y: u32) {
@@ -98,7 +94,16 @@ pub fn seperate_image(image: &ImageBW) -> Vec<ImageBW> {
 }
 
 pub fn save_images(images: &Vec<ImageBW>, out: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let file = File::create(out)?;
+    let file = if let Some(ext) = out.extension()
+        && ext == "zip"
+    {
+        File::create(out)?
+    } else {
+        let s: String = out.to_str().expect("Hello").to_owned() + ".zip";
+        let p = PathBuf::from_str(&s)?;
+        File::create(&p)?
+    };
+
     let mut zip = ZipWriter::new(file);
     let options = SimpleFileOptions::default().compression_method(CompressionMethod::Stored); // Images are already well compressed. No need for more
     for image in images.iter().enumerate() {

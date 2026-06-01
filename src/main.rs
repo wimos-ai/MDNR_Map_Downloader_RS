@@ -125,7 +125,7 @@ async fn main() {
 
             println!("Saving!");
 
-            let path = PathBuf::from_str("out.zip").expect("OOPS");
+            let path = PathBuf::from_str(&args.out).expect("OOPS");
             let _ = save_images(&imgs, &path);
         } else {
             println!("Saving!");
