@@ -55,7 +55,7 @@ async fn image_from_view(view: location::MapRectView, nconcurrent: usize) -> Ima
     let client = reqwest::Client::new();
 
     let futures = view.map(async |f| {
-        let permit = Arc::clone(&sem).acquire_owned().await.unwrap();
+        let permit = sem.clone().acquire_owned().await.unwrap();
         let img_dat = f.get_async_c(&client).await;
         drop(permit);
 
