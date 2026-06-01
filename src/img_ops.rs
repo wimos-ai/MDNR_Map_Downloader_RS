@@ -85,7 +85,7 @@ fn log_pixel(image: &ImageBW, write_img: &mut ImageBW, visited: &mut ImageBW, x:
     }
 }
 
-pub fn seperate_image(image: &ImageBW) -> Vec<ImageBW> {
+pub fn separate_image(image: &ImageBW) -> Vec<ImageBW> {
     let mut images = vec![];
     let mut visited = ImageBW::new(image.width(), image.height());
     visited.fill(0);

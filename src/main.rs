@@ -11,7 +11,7 @@ use image_merger::{FromWithFormat, Image, KnownSizeMerger, Merger};
 use clap::Parser;
 use tokio::sync::Semaphore;
 
-use crate::img_ops::{save_images, seperate_image};
+use crate::img_ops::{save_images, separate_image};
 
 type ImageRGB8 = Image<Rgb<u8>, ImageBuffer<Rgb<u8>, Vec<u8>>>;
 
@@ -122,7 +122,7 @@ async fn main() {
         if args.seperate_layers {
             println!("Seperating!");
 
-            let imgs = seperate_image(&img);
+            let imgs = separate_image(&img);
 
             println!("Saving!");
 
