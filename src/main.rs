@@ -52,10 +52,11 @@ struct Args {
 
 async fn image_from_view(view: location::MapRectView, nconcurrent: usize) -> ImageRGB8 {
     let sem = Arc::new(Semaphore::new(nconcurrent)); // Limit to 400 concurrent tasks
+    let client = reqwest::Client::new();
 
     let futures = view.map(async |f| {
         let permit = Arc::clone(&sem).acquire_owned().await.unwrap();
-        let img_dat = f.get_async().await;
+        let img_dat = f.get_async_c(&client).await;
         drop(permit);
 
         match img_dat {
@@ -70,14 +71,14 @@ async fn image_from_view(view: location::MapRectView, nconcurrent: usize) -> Ima
                     println!("Reqwest error: {:?}", error);
                     exit(-1);
                 }
-                location::LocationError::ResponceCode(value) => {
+                location::LocationError::ResponseCode(value) => {
                     println!("Invalid Response Code: {}", value);
                     exit(-1);
                 }
             },
         }
     });
-    let images = futures::future::join_all(futures).await;
+    let images = futures::future::join_all(futures).await; // These do need to be ordered
 
     println!("Merging!");
 

@@ -10,12 +10,12 @@ pub struct Location {
 #[derive(Debug)]
 pub enum LocationError {
     ReqwestErr(reqwest::Error),
-    ResponceCode(u16),
+    ResponseCode(u16),
 }
 
 impl From<u16> for LocationError {
     fn from(value: u16) -> Self {
-        LocationError::ResponceCode(value)
+        LocationError::ResponseCode(value)
     }
 }
 
@@ -54,11 +54,7 @@ impl Location {
         // Note, corelation is expiramentally derived
         let x = ((182.038 * longitude) + 32766.9) as u16;
         let y = ((-259.216 * latitude) + 35235.3) as u16;
-        let l = Location {
-            x,
-            y,
-            layer: 16,
-        };
+        let l = Location { x, y, layer: 16 };
         l.translate_layer(layer)
     }
 
@@ -69,7 +65,16 @@ impl Location {
         )
     }
 
-    pub async fn get_async(self) -> Result<Vec<u8>, LocationError> {
+    pub async fn get_async_c(&self, client: &reqwest::Client) -> Result<Vec<u8>, LocationError> {
+        let url = self.get_url();
+        let resp = client.get(url).send().await?;
+        match resp.status().as_u16() {
+            200 => Ok(resp.bytes().await?.to_vec()),
+            value => Err(value.into()),
+        }
+    }
+
+    pub async fn get_async(&self) -> Result<Vec<u8>, LocationError> {
         let url = self.get_url();
         let resp = reqwest::get(url).await?;
         match resp.status().as_u16() {
