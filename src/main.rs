@@ -14,10 +14,10 @@ use tokio::time::sleep;
 use image::{ImageBuffer, ImageFormat, Rgb};
 use image_merger::{FromWithFormat, Image, KnownSizeMerger, Merger};
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use tokio::sync::{Mutex, Semaphore};
 
-use crate::img_ops::{save_images, separate_image};
+use crate::img_ops::{save_images, separate_image, threshold_image_luma};
 use crate::location::LocationError;
 
 type ImageRGB8 = Image<Rgb<u8>, ImageBuffer<Rgb<u8>, Vec<u8>>>;
@@ -26,35 +26,56 @@ type ImageRGB8 = Image<Rgb<u8>, ImageBuffer<Rgb<u8>, Vec<u8>>>;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// Latitude of image center
-    latitude: f64,
+    #[command(subcommand)]
+    command: Commands,
+}
 
-    /// Longitude of image center
-    longitude: f64,
+#[derive(Debug, Subcommand, Clone)]
+enum Commands {
+    /// Download a section of map from the MDNR
+    Download {
+        /// Latitude of image center
+        latitude: f64,
 
-    /// Output File Path. Note, no matter the file type it will be written as a png
-    #[arg(short, long, default_value_t = String::from_str("out.png").expect("Big OOps"))]
-    out: String,
+        /// Longitude of image center
+        longitude: f64,
 
-    /// Radius (in photo blocks) around center to capture
-    #[arg(short, long, default_value_t = 5)]
-    radius: u8,
+        /// Output File Path. Note, no matter the file type it will be written as a png
+        #[arg(short, long, default_value_t = String::from_str("downloaded.png").expect("Big OOps"))]
+        out: String,
 
-    /// Layer to capture. Must be in [1,16] inclusive
-    #[arg(short, long, default_value_t = 16)]
-    layer: u8,
+        /// Radius (in photo blocks) around center to capture
+        #[arg(short, long, default_value_t = 5)]
+        radius: u8,
 
-    /// Chooses number of parallel requests. Try turning this down if you get invalid response codes
-    #[arg(short, long, default_value_t = 400)]
-    nreqs: usize,
+        /// Layer to capture. Must be in [1,16] inclusive
+        #[arg(short, long, default_value_t = 16)]
+        layer: u8,
 
-    /// Converts image to black and white image with boarders as black
-    #[clap(long, short, action)]
-    threshold_boarders: bool,
+        /// Chooses number of parallel requests. Try turning this down if you get invalid response codes
+        #[arg(short, long, default_value_t = 400)]
+        nreqs: usize,
+    },
 
-    /// Attempts to Seperate Layers of the lake
-    #[clap(long, short, action)]
-    seperate_layers: bool,
+    /// Thresholds a map to only the outline
+    Threshold {
+        /// Input File Path
+        file_in: String,
+
+        /// Output File Path. Note, no matter the file type it will be written as a png
+        #[arg(short, long, default_value_t = String::from_str("thresholded.png").expect("Big OOps"))]
+        out: String,
+    },
+
+    /// Seperates a map into layers
+    Seperate {
+        /// Input File Path
+        file_in: String,
+
+        /// Output File Path. Note, no matter the file type it will be written as a zip
+        #[arg(short, long, default_value_t = String::from_str("seperated.zip").expect("Big OOps"))]
+        out: String,
+    },
 }
 
 async fn image_from_view(
@@ -139,44 +160,76 @@ async fn image_from_view(
     Ok(merger.into_canvas())
 }
 
+async fn download(
+    latitude: f64,
+    longitude: f64,
+    out: &str,
+    radius: u8,
+    layer: u8,
+    nreqs: usize,
+) -> Result<(), LocationError> {
+    let center = location::Location::from_gps(longitude, latitude, layer);
+    let radius = radius as u16;
+    let top_l = location::Location::new(center.x - radius, center.y - radius, layer);
+
+    let view = location::MapRectView::new(top_l, (radius * 2) + 1, (radius * 2) + 1);
+
+    println!("Downloading!");
+
+    let img = image_from_view(view, nreqs).await?;
+
+    println!("Saving!");
+
+    img.save_with_format(out, ImageFormat::Png).unwrap();
+    Ok(())
+}
+
+async fn threshold(file_in: &str, out: &str) {
+    let im = image::open(file_in)
+        .expect("Failed to open file")
+        .as_rgb8()
+        .unwrap()
+        .to_owned()
+        .into();
+    let threshed = threshold_image_luma(&im);
+    threshed
+        .save_with_format(out, ImageFormat::Png)
+        .expect("Failed to save image");
+}
+
+async fn seperate(file_in: &str, out: &str) {
+    let im = image::open(file_in)
+        .expect("Failed to open file")
+        .as_rgb8()
+        .unwrap()
+        .to_owned()
+        .into();
+    let threshed = threshold_image_luma(&im);
+    drop(im); // Free some ram
+    let images = separate_image(&threshed);
+    drop(threshed); // Free some ram
+    let path = PathBuf::from_str(out).expect("OOPS");
+    let _ = save_images(&images, &path);
+}
+
 #[tokio::main]
 async fn main() -> Result<(), LocationError> {
     let args = Args::parse();
 
     println!("Running with: {:?}", args);
 
-    let center = location::Location::from_gps(args.longitude, args.latitude, args.layer);
-    let radius = args.radius as u16;
-    let top_l = location::Location::new(center.x - radius, center.y - radius, args.layer);
-
-    let view = location::MapRectView::new(top_l, (radius * 2) + 1, (radius * 2) + 1);
-
-    println!("Downloading!");
-
-    let img = image_from_view(view, args.nreqs).await?;
-
-    if args.threshold_boarders {
-        println!("Thresholding");
-        let img = img_ops::threshold_image_luma(&img);
-
-        if args.seperate_layers {
-            println!("Seperating!");
-
-            let imgs = separate_image(&img);
-
-            println!("Saving!");
-
-            let path = PathBuf::from_str(&args.out).expect("OOPS");
-            let _ = save_images(&imgs, &path);
-        } else {
-            println!("Saving!");
-
-            img.save_with_format(args.out, ImageFormat::Png).unwrap();
-        }
-    } else {
-        println!("Saving!");
-
-        img.save_with_format(args.out, ImageFormat::Png).unwrap();
+    match args.command {
+        Commands::Download {
+            latitude,
+            longitude,
+            out,
+            radius,
+            layer,
+            nreqs,
+        } => download(latitude, longitude, &out, radius, layer, nreqs).await?,
+        Commands::Threshold { file_in, out } => threshold(&file_in, &out).await,
+        Commands::Seperate { file_in, out } => seperate(&file_in, &out).await,
     }
+
     Ok(())
 }
