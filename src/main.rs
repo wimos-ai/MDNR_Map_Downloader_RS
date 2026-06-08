@@ -3,7 +3,9 @@ mod location;
 
 use core::time;
 use std::collections::HashMap;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -61,7 +63,7 @@ async fn image_from_view(
 ) -> Result<ImageRGB8, LocationError> {
     let sem = Arc::new(Semaphore::new(nconcurrent)); // Limit to 400 concurrent tasks
     let client = reqwest::Client::new();
-    let cache = Arc::new(Mutex::new(HashMap::new()));
+    let cache = Mutex::new(HashMap::new());
 
     let futures = view.map(async |f| -> Result<_, LocationError> {
         let permit = sem.clone().acquire_owned().await.unwrap();
@@ -94,28 +96,19 @@ async fn image_from_view(
         }?;
 
         drop(permit);
-        // Implement something similar to String Interning. Arc<[u8]>?
 
         let hash = {
-            const CUSTOM_ALG: crc::Algorithm<u128> = crc::Algorithm {
-                width: 128,
-                poly: 0x8005,
-                init: 0xffff,
-                refin: false,
-                refout: false,
-                xorout: 0x0000,
-                check: 0xaee7,
-                residue: 0x0000,
-            };
-
-            let crc = crc::Crc::<u128>::new(&CUSTOM_ALG);
-            let mut digest = crc.digest();
-            digest.update(&data);
-            digest.finalize()
+            let mut hasher = DefaultHasher::new();
+            data.as_slice().hash(&mut hasher);
+            hasher.finish()
         };
 
-        let mut cache_handle = cache.lock().await;
-        Ok(cache_handle.entry(hash).or_insert_with(|| Arc::<[u8]>::from(data)).to_owned())
+        // let mut cache_handle = cache;
+        Ok(cache
+            .lock().await
+            .entry(hash)
+            .or_insert_with(|| Rc::<[u8]>::from(data))
+            .to_owned())
     });
     // These do need to be ordered
     let datas: Result<Box<_>, _> = futures::future::join_all(futures)
