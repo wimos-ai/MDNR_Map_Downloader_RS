@@ -105,32 +105,36 @@ async fn image_from_view(
 
         // let mut cache_handle = cache;
         Ok(cache
-            .lock().await
+            .lock()
+            .await
             .entry(hash)
             .or_insert_with(|| Rc::<[u8]>::from(data))
             .to_owned())
     });
     // These do need to be ordered
-    let datas: Result<Box<_>, _> = futures::future::join_all(futures)
+    let buffers: Result<Box<_>, _> = futures::future::join_all(futures)
         .await
         .into_iter()
         .collect();
-    let datas = datas?;
+
+    let mut images = buffers?
+        .into_iter()
+        .map(|f| ImageRGB8::from_with_format(f, ImageFormat::Png))
+        .peekable();
 
     println!("Merging!");
 
-    let merger = {
-        let mut merger =
-            KnownSizeMerger::new((256, 256), view.width() as u32, view.num_imgs(), None);
+    let first = images.peek().expect("Huh, we downloaded no images");
+    let mut merger = KnownSizeMerger::new(
+        first.dimensions(),
+        view.width() as u32,
+        view.num_imgs(),
+        None,
+    );
 
-        for image in datas
-            .into_iter()
-            .map(|f| ImageRGB8::from_with_format(f, ImageFormat::Png))
-        {
-            merger.push(&image);
-        }
-        merger
-    };
+    for image in images {
+        merger.push(&image);
+    }
 
     Ok(merger.into_canvas())
 }
